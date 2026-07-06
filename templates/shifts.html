@@ -16,11 +16,7 @@
 </div>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-  {% for shift in shifts or [
-    {'ShiftID': 1, 'ShiftName': 'Morning Shift', 'StartTime': '09:00 AM', 'EndTime': '06:00 PM', 'GracePeriod': 15, 'WorkingHours': 8.00, 'EmployeeCount': 38, 'color': 'bg-brand-600'},
-    {'ShiftID': 2, 'ShiftName': 'Evening Shift', 'StartTime': '02:00 PM', 'EndTime': '11:00 PM', 'GracePeriod': 10, 'WorkingHours': 8.00, 'EmployeeCount': 27, 'color': 'bg-amber-500'},
-    {'ShiftID': 3, 'ShiftName': 'Night Shift', 'StartTime': '11:00 PM', 'EndTime': '08:00 AM', 'GracePeriod': 15, 'WorkingHours': 8.00, 'EmployeeCount': 21, 'color': 'bg-slate-700'}
-  ] %}
+  {% for shift in shifts %}
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     <div class="h-1.5 {{ shift.color }}"></div>
     <div class="p-5">
