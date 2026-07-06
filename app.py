@@ -92,8 +92,49 @@ def employees():
             conn.close()
     return render_template('employees.html', employees=employees)
 
-@app.route('/add_employee')
+@app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
+    conn = None
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+        EmployeeCode=request.form.get('employee_code')
+        CardNumber=request.form.get('card_number')
+        FirstName=request.form.get('first_name')
+        LastName=request.form.get('last_name')
+        NickName=request.form.get('nick_name')
+        Gender=request.form.get('gender')
+        DateOfBirth=request.form.get('date_of_birth')
+        CNIC=request.form.get('cnic')
+        Passport=request.form.get('passport')
+        Nationality=request.form.get('nationality')
+        Religion=request.form.get('religion')
+        Photo=request.form.get('photo')
+        
+        
+        Mobile=request.form.get('mobile')
+        OfficePhone=request.form.get('office_phone')
+        Email=request.form.get('email')
+        City=request.form.get('city')
+        Address=request.form.get('address')
+        PostalCode=request.form.get('postal_code')
+        HireDate=request.form.get('hire_date')
+        EmploymentType=request.form.get('employment_type')
+        DepartmentID=request.form.get('department_id')
+        PositionID=request.form.get('position_id')
+        CompanyID=request.form.get('company_id')
+        SupervisorID=request.form.get('supervisor_id')
+        Status=request.form.get('status')
+        DevicePassword=request.form.get('device_password')
+        DeviceSerialNumber=request.form.get('device_serial_number')
+        cursor.execute("INSERT INTO employees (EmployeeCode, CardNumber, FirstName, LastName, NickName, Gender, DateOfBirth, CNIC, Passport, Nationality, Religion, Photo, Mobile, OfficePhone, Email, City, Address, PostalCode, HireDate, EmploymentType, DepartmentID, PositionID, CompanyID, SupervisorID, Status, DevicePassword, DeviceSerialNumber) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (EmployeeCode, CardNumber, FirstName, LastName, NickName, Gender, DateOfBirth, CNIC, Passport, Nationality, Religion, Photo, Mobile, OfficePhone, Email, City, Address, PostalCode, HireDate, EmploymentType, DepartmentID, PositionID, CompanyID, SupervisorID, Status, DevicePassword, DeviceSerialNumber))
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding employee: {e}")
+
+    finally:
+        if conn:
+            conn.close()
     return render_template('add_employee.html')
 
 @app.route('/update_employee_shift', methods=['POST'])
@@ -118,7 +159,20 @@ def update_employee_shift():
 
 @app.route('/shifts')
 def shifts():
-    return render_template('shifts.html')
+    conn=None
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM shift")
+        shifts = cursor.fetchall()
+        print(shifts)
+    except Exception as e:
+        print(f"Error fetching shifts: {e}")
+        shifts = []
+    finally:
+        if conn:
+            conn.close()
+    return render_template('shifts.html', shifts=shifts)
 
 @app.route('/add_shift', methods=['GET', 'POST'])
 def add_shift():
