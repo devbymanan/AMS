@@ -1,4 +1,4 @@
-﻿from flask import Flask, render_template, request, redirect, url_for
+﻿from flask import Flask, abort, render_template, request, redirect, url_for
 from datetime import datetime
 import pyodbc
 import os
@@ -34,9 +34,8 @@ def dashboard():
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM personnel_employee")
+        cursor.execute("SELECT COUNT(*) FROM employees")
         total_employees = cursor.fetchone()[0]
-        print(total_employees)
     except Exception as e:
         print(f"Error fetching total employees: {e}")
     finally:
@@ -47,107 +46,216 @@ def dashboard():
 
 @app.route('/employees')
 def employees():
-    conn=None
+    conn = None
+    employees = []
+    shifts = []
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
         cursor.execute("""
-                        SELECT
-                            p.id AS EmployeeID,
+            SELECT
+                e.EmployeeID,
+                CONCAT(
+                    e.FirstName,
+                    CASE
+                        WHEN e.LastName IS NULL OR e.LastName = ''
+                        THEN ''
+                        ELSE ' ' + e.LastName
+                    END
+                ) AS FullName,
+                e.Email AS Email,
+                e.EmployeeCode AS ZKBioEmployeeID,
+                e.ShiftID,
+                s.ShiftName
+            FROM employees e
+            LEFT JOIN Shift s
+                ON s.ShiftID = e.ShiftID
+            ORDER BY e.EmployeeID;
+        """)
+        employee_rows = cursor.fetchall()
+        employee_columns = [col[0] for col in cursor.description]
+        employees = [dict(zip(employee_columns, row)) for row in employee_rows]
 
-                            CONCAT(
-                                p.first_name,
-                                CASE
-                                    WHEN p.last_name IS NULL OR p.last_name = ''
-                                    THEN ''
-                                    ELSE ' ' + p.last_name
-                                END
-                            ) AS FullName,
-
-                            p.email AS Email,
-
-                            p.emp_code AS ZKBioEmployeeID,
-
-                            e.ShiftID,
-
-                            s.ShiftName
-
-                        FROM personnel_employee p
-
-                        LEFT JOIN EmployeeShiftAssignments e
-                            ON p.id = e.EmployeeID
-
-                        LEFT JOIN Shift s
-                            ON s.ShiftID = e.ShiftID
-
-                        ORDER BY p.id;
-                        """)
-        employees = cursor.fetchall()
-        print(employees)
+        cursor.execute("SELECT * FROM Shift")
+        shift_rows = cursor.fetchall()
+        shift_columns = [col[0] for col in cursor.description]
+        shifts = [dict(zip(shift_columns, row)) for row in shift_rows]
     except Exception as e:
         print(f"Error fetching employees: {e}")
-        employees = []
     finally:
         if conn:
             conn.close()
-    return render_template('employees.html', employees=employees)
+    return render_template('employees.html', employees=employees, shifts=shifts)
+
+
+
+
+@app.route('/view_employee/<int:employee_id>')
+def view_employee(employee_id):
+    conn = None
+    attendance = []
+
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                e.EmployeeID,
+                e.EmployeeCode,
+                e.CardNumber,
+                e.FirstName,
+                e.LastName,
+                e.NickName,
+                e.Gender,
+                e.DateOfBirth,
+                e.CNIC,
+                e.Passport,
+                e.Nationality,
+                e.Religion,
+                e.Photo AS PhotoPath,
+                e.Mobile,
+                e.OfficePhone,
+                e.Email,
+                e.City,
+                e.Address,
+                e.PostalCode,
+                e.HireDate,
+                e.EmploymentType,
+                e.DepartmentID,
+                e.PositionID,
+                e.SupervisorID,
+                e.Status,
+                e.DevicePassword,
+                e.DeviceSerialNumber,
+                e.ShiftID,
+                s.ShiftName,
+                s.StartTime,
+                s.EndTime
+            FROM employees e
+            LEFT JOIN Shift s
+                ON s.ShiftID = e.ShiftID
+            WHERE e.EmployeeID = ?
+        """, employee_id)
+        row = cursor.fetchone()
+
+        if not row:
+            abort(404)
+
+        columns = [col[0] for col in cursor.description]
+        employee = {key: (value if value is not None else "") for key, value in zip(columns, row)}
+        employee.setdefault("DepartmentName", "")
+        employee.setdefault("PositionName", "")
+        employee.setdefault("CompanyName", "")
+        employee.setdefault("SupervisorName", "")
+        employee["FirstInitial"] = (employee.get("FirstName") or "")[:1]
+        employee["LastInitial"] = (employee.get("LastName") or "")[:1]
+    except Exception as e:
+        print("Error fetching employee:", e)
+        abort(500)
+    finally:
+        if conn:
+            conn.close()
+
+    return render_template('view_employee.html', employee=employee, attendance=attendance)
+
 
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
     conn = None
+    departments = []
+    positions = []
+    shifts = []
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
-        EmployeeCode=request.form.get('employee_code')
-        CardNumber=request.form.get('card_number')
-        FirstName=request.form.get('first_name')
-        LastName=request.form.get('last_name')
-        NickName=request.form.get('nick_name')
-        Gender=request.form.get('gender')
-        DateOfBirth=request.form.get('date_of_birth')
-        CNIC=request.form.get('cnic')
-        Passport=request.form.get('passport')
-        Nationality=request.form.get('nationality')
-        Religion=request.form.get('religion')
-        Photo=request.form.get('photo')
+        cursor.execute("SELECT * FROM Department")
+        departments = cursor.fetchall()
+
+        cursor.execute("SELECT * FROM Positions")
+        positions = cursor.fetchall()
         
-        
-        Mobile=request.form.get('mobile')
-        OfficePhone=request.form.get('office_phone')
-        Email=request.form.get('email')
-        City=request.form.get('city')
-        Address=request.form.get('address')
-        PostalCode=request.form.get('postal_code')
-        HireDate=request.form.get('hire_date')
-        EmploymentType=request.form.get('employment_type')
-        DepartmentID=request.form.get('department_id')
-        PositionID=request.form.get('position_id')
-        CompanyID=request.form.get('company_id')
-        SupervisorID=request.form.get('supervisor_id')
-        Status=request.form.get('status')
-        DevicePassword=request.form.get('device_password')
-        DeviceSerialNumber=request.form.get('device_serial_number')
-        cursor.execute("INSERT INTO employees (EmployeeCode, CardNumber, FirstName, LastName, NickName, Gender, DateOfBirth, CNIC, Passport, Nationality, Religion, Photo, Mobile, OfficePhone, Email, City, Address, PostalCode, HireDate, EmploymentType, DepartmentID, PositionID, CompanyID, SupervisorID, Status, DevicePassword, DeviceSerialNumber) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (EmployeeCode, CardNumber, FirstName, LastName, NickName, Gender, DateOfBirth, CNIC, Passport, Nationality, Religion, Photo, Mobile, OfficePhone, Email, City, Address, PostalCode, HireDate, EmploymentType, DepartmentID, PositionID, CompanyID, SupervisorID, Status, DevicePassword, DeviceSerialNumber))
-        conn.commit()
+        cursor.execute("SELECT * FROM Shift")
+        shifts = cursor.fetchall()
+
+        if request.method == 'POST':
+            EmployeeCode = request.form.get('employee_code')
+            CardNumber = request.form.get('card_number')
+            FirstName = request.form.get('first_name')
+            LastName = request.form.get('last_name')
+            NickName = request.form.get('nick_name')
+            Gender = request.form.get('gender')
+            DateOfBirth = request.form.get('date_of_birth')
+            CNIC = request.form.get('cnic')
+            Passport = request.form.get('passport')
+            Nationality = request.form.get('nationality')
+            Religion = request.form.get('religion')
+            Photo = request.form.get('photo')
+
+            Mobile = request.form.get('mobile')
+            OfficePhone = request.form.get('office_phone')
+            Email = request.form.get('email')
+            City = request.form.get('city')
+            Address = request.form.get('address')
+            PostalCode = request.form.get('postal_code')
+            HireDate = request.form.get('hire_date')
+            EmploymentType = request.form.get('employment_type')
+
+            DepartmentID = request.form.get('department_id')
+            PositionID = request.form.get('position_id')
+            ShiftID = request.form.get('shift_id')
+            SupervisorID = request.form.get('supervisor_id')
+            Status = request.form.get('status')
+            DevicePassword = request.form.get('device_password')
+            DeviceSerialNumber = request.form.get('device_serial_number')
+
+            cursor.execute("""
+                INSERT INTO employees (
+                    EmployeeCode, CardNumber, FirstName, LastName, NickName, Gender,
+                    DateOfBirth, CNIC, Passport, Nationality, Religion, Photo,
+                    Mobile, OfficePhone, Email, City, Address, PostalCode,
+                    HireDate, EmploymentType, DepartmentID, PositionID,
+                    ShiftID, SupervisorID, Status, DevicePassword, DeviceSerialNumber
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (EmployeeCode, CardNumber, FirstName, LastName, NickName, Gender,
+                  DateOfBirth, CNIC, Passport, Nationality, Religion, Photo,
+                  Mobile, OfficePhone, Email, City, Address, PostalCode,
+                  HireDate, EmploymentType, DepartmentID, PositionID,
+                  ShiftID, SupervisorID, Status, DevicePassword, DeviceSerialNumber))
+            conn.commit()
+
+            return redirect(url_for('employees'))  
+
     except Exception as e:
         print(f"Error adding employee: {e}")
-
     finally:
         if conn:
             conn.close()
-    return render_template('add_employee.html')
+
+    return render_template('add_employee.html', departments=departments, positions=positions, shifts=shifts)
 
 @app.route('/update_employee_shift', methods=['POST'])
 def update_employee_shift():
-    emp_id = request.form.get('emp_id')
-    new_shift = request.form.get('new_shift')
+    employee_id = request.form.get('employee_id')
+    shift_id = request.form.get('shift_id')
 
-    if emp_id and new_shift:
+    if employee_id and shift_id:
         conn = None
         try:
             conn = AMS_connection()
             cursor = conn.cursor()
-            cursor.execute("UPDATE personnel_employee SET shift = ? WHERE id = ?", (new_shift, emp_id))
+            cursor.execute("SELECT 1 FROM EmployeeShiftAssignments WHERE EmployeeID = ?", employee_id)
+            existing = cursor.fetchone()
+
+            if existing:
+                cursor.execute(
+                    "UPDATE EmployeeShiftAssignments SET ShiftID = ? WHERE EmployeeID = ?",
+                    (shift_id, employee_id),
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO EmployeeShiftAssignments (EmployeeID, ShiftID) VALUES (?, ?)",
+                    (employee_id, shift_id),
+                )
             conn.commit()
         except Exception as e:
             print(f"Error updating employee shift: {e}")
@@ -165,7 +273,6 @@ def shifts():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM shift")
         shifts = cursor.fetchall()
-        print(shifts)
     except Exception as e:
         print(f"Error fetching shifts: {e}")
         shifts = []
@@ -188,7 +295,6 @@ def add_shift():
         cursor.execute("INSERT INTO shift (ShiftName, StartTime, EndTime, GracePeriod, WorkingHours) VALUES (?, ?, ?, ?, ?)", (shift_name, start_time, end_time, grace_period, working_hours))
         conn.commit()
         shifts = cursor.fetchall()
-        print(shifts)
     except Exception as e:
         print(f"Error adding shift: {e}")
         shifts = []
@@ -213,7 +319,7 @@ def attendance():
             conn.close()                                                                                
     return render_template('attendance.html')
 
-@app.route('/add_attendance', methods=['GET''POST'])
+@app.route('/add_attendance', methods=['GET','POST'])
 def add_attendance():
     return redirect(url_for('attendance'))
 
