@@ -204,7 +204,7 @@ def add_employee():
             PositionID = request.form.get('position_id')
             ShiftID = request.form.get('shift_id')
             SupervisorID = request.form.get('supervisor_id')
-            Status = request.form.get('status')
+            Status = 1 if request.form.get('status') else 0
             DevicePassword = request.form.get('device_password')
             DeviceSerialNumber = request.form.get('device_serial_number')
 
@@ -243,17 +243,17 @@ def update_employee_shift():
         try:
             conn = AMS_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM EmployeeShiftAssignments WHERE EmployeeID = ?", employee_id)
+            cursor.execute("SELECT 1 FROM Employees WHERE EmployeeID = ?", employee_id)
             existing = cursor.fetchone()
 
             if existing:
                 cursor.execute(
-                    "UPDATE EmployeeShiftAssignments SET ShiftID = ? WHERE EmployeeID = ?",
+                    "UPDATE Employees SET ShiftID = ? WHERE EmployeeID = ?",
                     (shift_id, employee_id),
                 )
             else:
                 cursor.execute(
-                    "INSERT INTO EmployeeShiftAssignments (EmployeeID, ShiftID) VALUES (?, ?)",
+                    "INSERT INTO Employees (EmployeeID, ShiftID) VALUES (?, ?)",
                     (employee_id, shift_id),
                 )
             conn.commit()
@@ -263,6 +263,20 @@ def update_employee_shift():
             if conn:
                 conn.close()
 
+    return redirect(url_for('employees'))
+@app.route('/delete_employee/<int:employee_id>', methods=['POST'])
+def delete_employee(employee_id):
+    conn = None
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM employees WHERE EmployeeID = ?", employee_id)
+        conn.commit()
+    except Exception as e:
+        print(f"Error deleting employee: {e}")
+    finally:
+        if conn:
+            conn.close()
     return redirect(url_for('employees'))
 
 @app.route('/shifts')
