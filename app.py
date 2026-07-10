@@ -487,17 +487,18 @@ def attendance():
         cursor = conn.cursor()
 
         attendance_query = """
-            SELECT
-                a.AttendanceID,
-                COALESCE(e.FullName, CONCAT(e.FirstName, ' ', e.LastName)) AS FullName,
-                a.PunchTime,
-                a.ZKBioTransactionID,
-                a.EmployeeID,
-                'Device' AS source
-            FROM Attendance a
-            LEFT JOIN employees e ON e.EmployeeID = a.EmployeeID
-            WHERE CAST(a.PunchTime AS DATE) = ?
-        """
+                                SELECT
+                                    a.AttendanceID,
+                                    CONCAT(e.FirstName, ' ', e.LastName) AS FullName,
+                                    a.PunchTime,
+                                    a.ZKBioTransactionID,
+                                    a.EmployeeID,
+                                    a.Source AS source
+                                FROM Attendance a
+                                LEFT JOIN Employees e
+                                    ON e.EmployeeID = a.EmployeeID
+                                WHERE CAST(a.PunchTime AS DATE) = ?
+                            """
         params = [selected_date]
 
         if selected_employee_id:
@@ -520,13 +521,33 @@ def attendance():
             count_params.append(selected_employee_id)
         cursor.execute(count_query, tuple(count_params))
         total_records = cursor.fetchone()[0] or 0
+        
+        
+        cursor.execute("""
+                    SELECT
+                        EmployeeID,
+                        CONCAT(FirstName, ' ', LastName) AS FullName
+                    FROM Employees
+                    WHERE Status = 1
+                    ORDER BY FirstName, LastName
+                """)
 
-        cursor.execute("SELECT MAX(sync_time) FROM SyncLog")
-        sync_row = cursor.fetchone()
-        if sync_row:
-            last_sync = sync_row[0]
-            if last_sync:
-                last_sync_time = last_sync.strftime('%Y-%m-%d %H:%M:%S')
+        rows = cursor.fetchall()
+
+        employees = []
+
+        for row in rows:
+            employees.append({
+                'EmployeeID': row.EmployeeID,
+                'FullName': row.FullName
+            })
+
+        # cursor.execute("SELECT MAX(sync_time) FROM SyncLog")
+        # sync_row = cursor.fetchone()
+        # if sync_row:
+        #     last_sync = sync_row[0]
+        #     if last_sync:
+        #         last_sync_time = last_sync.strftime('%Y-%m-%d %H:%M:%S')
     except Exception as e:
         print(f"Error fetching attendance records: {e}")
         attendance_records = []
@@ -552,7 +573,10 @@ def attendance():
 @app.route('/add_attendance', methods=['POST'])
 def add_attendance():
     employee_id = request.form.get('employee_id')
-    punch_time = request.form.get('punch_time')
+    punch_time = datetime.strptime(
+    request.form['punch_time'],
+    '%Y-%m-%dT%H:%M'
+)
 
     if employee_id and punch_time:
         conn = None
