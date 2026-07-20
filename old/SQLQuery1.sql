@@ -60,21 +60,6 @@ CREATE TABLE Report (
 );
 
 
-CREATE TABLE Device (
-    DeviceID INT IDENTITY(1,1) PRIMARY KEY,
-    DeviceName NVARCHAR(100) NOT NULL,
-    SerialNumber NVARCHAR(100) NOT NULL UNIQUE,
-    DeviceType NVARCHAR(50),
-    IPAddress NVARCHAR(50),
-    Port INT,
-    Location NVARCHAR(150),
-    Model NVARCHAR(100),
-    Status BIT DEFAULT 1,
-    Notes NVARCHAR(500),
-    CreatedAt DATETIME DEFAULT GETDATE()
-);
-
-
 CREATE TABLE SyncLog (
     LastTransactionID BIGINT
 );

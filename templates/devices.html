@@ -1,0 +1,119 @@
+{% extends "base.html" %} {% block title %}Devices - AttendanceMS{% endblock %}
+{% block page_title %}Devices{% endblock %} {% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <p class="text-sm text-slate-500">
+    Manage biometric terminals, card readers, and scanners connected to the system.
+  </p>
+  <a
+    href="{{ url_for('add_device') }}"
+    class="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+  >
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M12 4v16m8-8H4"
+      />
+    </svg>
+    Add Device
+  </a>
+</div>
+
+{% if devices %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+  {% for device in devices %}
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="h-1.5 {{ 'bg-emerald-500' if device.Status else 'bg-slate-300' }}"></div>
+    <div class="p-5">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h3 class="font-semibold text-slate-900">{{ device.DeviceName }}</h3>
+          <p class="text-xs text-slate-400 mt-0.5">SN: {{ device.SerialNumber }}</p>
+        </div>
+        <div class="flex gap-1">
+          <a
+            href="{{ url_for('edit_device', device_id=device.DeviceID) }}"
+            title="Edit Device"
+            class="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
+            </svg>
+          </a>
+
+          <form
+            action="{{ url_for('delete_device', device_id=device.DeviceID) }}"
+            method="POST"
+            class="inline"
+            onsubmit="return confirm('Are you sure you want to delete this device?');"
+          >
+            <button
+              type="submit"
+              title="Delete Device"
+              class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="space-y-2 text-sm text-slate-600">
+        {% if device.DeviceType %}
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7a2 2 0 012-2h6a2 2 0 012 2v10m-10 0a2 2 0 002 2h6a2 2 0 002-2m-10 0H7a2 2 0 01-2-2v-2a2 2 0 012-2h.01"/>
+          </svg>
+          {{ device.DeviceType }}
+        </div>
+        {% endif %}
+        {% if device.IPAddress %}
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01M5.05 12.454a10 10 0 0113.9 0M2 8.5a15 15 0 0120 0"/>
+          </svg>
+          {{ device.IPAddress }}{% if device.Port %}:{{ device.Port }}{% endif %}
+        </div>
+        {% endif %}
+        {% if device.Location %}
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          {{ device.Location }}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+        <span class="text-xs text-slate-400">{{ device.Model or "—" }}</span>
+        <span class="text-xs font-medium px-2 py-1 rounded-full {{ 'bg-emerald-50 text-emerald-700' if device.Status else 'bg-slate-100 text-slate-500' }}">
+          {{ "Active" if device.Status else "Inactive" }}
+        </span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
+  <p class="text-slate-500 text-sm">No devices registered yet.</p>
+</div>
+{% endif %}
+
+{% endblock %}
