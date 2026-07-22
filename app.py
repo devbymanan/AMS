@@ -162,10 +162,20 @@ def view_employee(employee_id):
         attendance = fetch_all_dicts(cursor)
 
         if not attendance:
-            cursor.execute(
-                "SELECT CAST(PunchTime AS DATE) AS AttendanceDate, CAST(PunchTime AS TIME) AS CheckIn, NULL AS CheckOut, 0 AS LateMinutes, 'Device' AS Status FROM Attendance WHERE EmployeeID = ? ORDER BY PunchTime DESC",
-                (employee_id,),
-            )
+            cursor.execute("""
+                SELECT
+                    CAST(a.PunchTime AS DATE) AS AttendanceDate,
+                    CAST(a.PunchTime AS TIME) AS CheckIn,
+                    NULL AS CheckOut,
+                    0 AS LateMinutes,
+                    'Device' AS Status,
+                    COALESCE(d.DeviceName, rt.terminal_alias) AS DeviceName
+                FROM Attendance a
+                LEFT JOIN RawTransactions rt ON rt.id = a.ZKBioTransactionID
+                LEFT JOIN Device d ON d.SerialNumber = rt.terminal_sn
+                WHERE a.EmployeeID = ?
+                ORDER BY a.PunchTime DESC
+            """, (employee_id,))
             attendance = fetch_all_dicts(cursor)
     except Exception as e:
         print("Error fetching employee:", e)
@@ -480,10 +490,17 @@ def devices():
         conn = AMS_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT DeviceID, DeviceName, SerialNumber, DeviceType, IPAddress,
-                   Port, Location, Model, Status, Notes, CreatedAt
-            FROM Device
-            ORDER BY DeviceName
+            SELECT
+                d.DeviceID, d.DeviceName, d.SerialNumber, d.DeviceType, d.IPAddress,
+                d.Port, d.Location, d.Model, d.Status, d.Notes, d.CreatedAt,
+                rt.PunchCount, rt.LastSeen
+            FROM Device d
+            OUTER APPLY (
+                SELECT COUNT(*) AS PunchCount, MAX(punch_time) AS LastSeen
+                FROM RawTransactions
+                WHERE terminal_sn = d.SerialNumber
+            ) rt
+            ORDER BY d.DeviceName
         """)
         devices = fetch_all_dicts(cursor)
     except Exception as e:
@@ -629,10 +646,16 @@ def attendance():
                                     a.PunchTime,
                                     a.ZKBioTransactionID,
                                     a.EmployeeID,
-                                    a.Source AS source
+                                    a.Source AS source,
+                                    COALESCE(d.DeviceName, rt.terminal_alias) AS DeviceName,
+                                    d.Location AS DeviceLocation
                                 FROM Attendance a
                                 LEFT JOIN Employees e
                                     ON e.EmployeeID = a.EmployeeID
+                                LEFT JOIN RawTransactions rt
+                                    ON rt.id = a.ZKBioTransactionID
+                                LEFT JOIN Device d
+                                    ON d.SerialNumber = rt.terminal_sn
                                 WHERE CAST(a.PunchTime AS DATE) = ?
                             """
         params = [selected_date]

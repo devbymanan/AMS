@@ -106,6 +106,15 @@
           {{ "Active" if device.Status else "Inactive" }}
         </span>
       </div>
+
+      <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+        <span class="text-slate-400">
+          {{ device.PunchCount or 0 }} punch{{ "es" if device.PunchCount != 1 else "" }} logged
+        </span>
+        <span class="text-slate-400">
+          Last seen: {{ device.LastSeen or "never" }}
+        </span>
+      </div>
     </div>
   </div>
   {% endfor %}

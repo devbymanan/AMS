@@ -228,6 +228,7 @@ Employee Details
         <th class="px-6 py-3 font-medium">Date</th>
         <th class="px-6 py-3 font-medium">Check In</th>
         <th class="px-6 py-3 font-medium">Check Out</th>
+        <th class="px-6 py-3 font-medium">Device</th>
         <th class="px-6 py-3 font-medium">Status</th>
       </tr>
     </thead>
@@ -237,10 +238,11 @@ Employee Details
         <td class="px-6 py-3.5 text-slate-500">{{ a.AttendanceDate }}</td>
         <td class="px-6 py-3.5 text-slate-500">{{ a.CheckIn or "—" }}</td>
         <td class="px-6 py-3.5 text-slate-500">{{ a.CheckOut or "—" }}</td>
+        <td class="px-6 py-3.5 text-slate-500">{{ a.DeviceName or "—" }}</td>
         <td class="px-6 py-3.5 text-slate-500">{{ a.Status }}</td>
       </tr>
       {% else %}
-      <tr><td class="px-6 py-3.5 text-slate-400" colspan="4">No attendance records yet.</td></tr>
+      <tr><td class="px-6 py-3.5 text-slate-400" colspan="5">No attendance records yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

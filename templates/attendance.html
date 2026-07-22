@@ -37,22 +37,24 @@
           <th class="px-6 py-3 font-medium">Employee</th>
           <th class="px-6 py-3 font-medium">Punch Time</th>
           <th class="px-6 py-3 font-medium">ZKBio Txn ID</th>
+          <th class="px-6 py-3 font-medium">Device</th>
           <th class="px-6 py-3 font-medium">Source</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100">
         {% for record in attendance_records or [
-          {'AttendanceID': 5021, 'FullName': 'Ahmed Raza', 'PunchTime': '2026-06-30 09:02:11', 'ZKBioTransactionID': 90121, 'source': 'Device'},
-          {'AttendanceID': 5022, 'FullName': 'Sara Khalid', 'PunchTime': '2026-06-30 08:58:44', 'ZKBioTransactionID': 90122, 'source': 'Device'},
-          {'AttendanceID': 5023, 'FullName': 'Bilal Hussain', 'PunchTime': '2026-06-30 18:01:09', 'ZKBioTransactionID': 90123, 'source': 'Device'},
-          {'AttendanceID': 5024, 'FullName': 'Fatima Noor', 'PunchTime': '2026-06-30 09:14:52', 'ZKBioTransactionID': None, 'source': 'Manual'},
-          {'AttendanceID': 5025, 'FullName': 'Hamza Tariq', 'PunchTime': '2026-06-30 17:55:30', 'ZKBioTransactionID': 90125, 'source': 'Device'}
+          {'AttendanceID': 5021, 'FullName': 'Ahmed Raza', 'PunchTime': '2026-06-30 09:02:11', 'ZKBioTransactionID': 90121, 'source': 'Device', 'DeviceName': 'Main Gate Terminal'},
+          {'AttendanceID': 5022, 'FullName': 'Sara Khalid', 'PunchTime': '2026-06-30 08:58:44', 'ZKBioTransactionID': 90122, 'source': 'Device', 'DeviceName': 'Main Gate Terminal'},
+          {'AttendanceID': 5023, 'FullName': 'Bilal Hussain', 'PunchTime': '2026-06-30 18:01:09', 'ZKBioTransactionID': 90123, 'source': 'Device', 'DeviceName': 'Warehouse Entrance'},
+          {'AttendanceID': 5024, 'FullName': 'Fatima Noor', 'PunchTime': '2026-06-30 09:14:52', 'ZKBioTransactionID': None, 'source': 'Manual', 'DeviceName': None},
+          {'AttendanceID': 5025, 'FullName': 'Hamza Tariq', 'PunchTime': '2026-06-30 17:55:30', 'ZKBioTransactionID': 90125, 'source': 'Device', 'DeviceName': 'Warehouse Entrance'}
         ] %}
         <tr class="hover:bg-slate-50">
           <td class="px-6 py-3.5 text-slate-500">#{{ record.AttendanceID }}</td>
           <td class="px-6 py-3.5 font-medium text-slate-800">{{ record.FullName }}</td>
           <td class="px-6 py-3.5 text-slate-600">{{ record.PunchTime }}</td>
           <td class="px-6 py-3.5 text-slate-500">{{ record.ZKBioTransactionID or '—' }}</td>
+          <td class="px-6 py-3.5 text-slate-600">{{ record.DeviceName or '—' }}</td>
           <td class="px-6 py-3.5">
             {% if record.source == 'Device' %}
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">Device</span>
