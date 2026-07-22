@@ -13,7 +13,7 @@ REQUIREMENTS
     USER/PASSWORD), plus these additional keys (all optional, shown with
     their defaults):
       SBXPC_DLL_PATH=SBXPCDLL64.dll
-      DEVICE_IP=192.168.1.103
+      DEVICE_IP=192.168.1.201
       DEVICE_PORT=4370
       DEVICE_PASSWORD=0          # comm key set on the device; 0 if none
       DEVICE_MACHINE_NUMBER=1
@@ -115,6 +115,18 @@ class SBXPCDevice:
         )
         self.dll._GetGeneralLogData.restype = ctypes.c_ubyte
 
+        # "All" variants ignore the device's internal read-mark, unlike
+        # ReadGeneralLogData/GetGeneralLogData above -- needed here because
+        # another client (the Yunatt cloud agent) is already pulling and
+        # marking records as read, so the marked-aware call comes back empty.
+        self.dll._ReadAllGLogData.argtypes = [ctypes.c_int32]
+        self.dll._ReadAllGLogData.restype = ctypes.c_ubyte
+
+        self.dll._GetAllGLogData.argtypes = (
+            [ctypes.c_int32] + [ctypes.POINTER(ctypes.c_int32)] * 10
+        )
+        self.dll._GetAllGLogData.restype = ctypes.c_ubyte
+
         self.dll._Disconnect.argtypes = [ctypes.c_int32]
         self.dll._Disconnect.restype = None
 
@@ -138,14 +150,14 @@ class SBXPCDevice:
     def get_general_log(self, machine_number):
         """Reads all attendance ("general") log records off the device.
         Returns a list of dicts: user_id, verify_mode, punch_time."""
-        if not self.dll._ReadGeneralLogData(machine_number, 0):
+        if not self.dll._ReadAllGLogData(machine_number):
             return []
 
         records = []
         (t_machine, enroll_no, e_machine, verify_mode,
          year, month, day, hour, minute, second) = (ctypes.c_int32() for _ in range(10))
 
-        while self.dll._GetGeneralLogData(
+        while self.dll._GetAllGLogData(
             machine_number,
             ctypes.byref(t_machine), ctypes.byref(enroll_no), ctypes.byref(e_machine),
             ctypes.byref(verify_mode), ctypes.byref(year), ctypes.byref(month),
