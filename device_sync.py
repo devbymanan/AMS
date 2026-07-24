@@ -130,6 +130,17 @@ class SBXPCDevice:
         self.dll._Disconnect.argtypes = [ctypes.c_int32]
         self.dll._Disconnect.restype = None
 
+        # Diagnostics -- used to confirm the connection is genuinely live and
+        # can see local device data at all, independent of the log itself.
+        self.dll._GetSerialNumber.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_void_p)]
+        self.dll._GetSerialNumber.restype = ctypes.c_ubyte
+
+        self.dll._ReadAllUserID.argtypes = [ctypes.c_int32]
+        self.dll._ReadAllUserID.restype = ctypes.c_ubyte
+
+        self.dll._GetAllUserID.argtypes = [ctypes.c_int32] + [ctypes.POINTER(ctypes.c_int32)] * 5
+        self.dll._GetAllUserID.restype = ctypes.c_ubyte
+
         self.connected = False
 
     def connect(self, ip, port, password, machine_number):
@@ -147,13 +158,42 @@ class SBXPCDevice:
             self.dll._Disconnect(machine_number)
             self.connected = False
 
+    def get_serial_number(self, machine_number):
+        bstr = self.oleaut32.SysAllocString("")
+        bstr_ptr = ctypes.c_void_p(bstr)
+        try:
+            ok = self.dll._GetSerialNumber(machine_number, ctypes.byref(bstr_ptr))
+            if not ok or not bstr_ptr.value:
+                return None
+            return ctypes.wstring_at(bstr_ptr.value)
+        finally:
+            self.oleaut32.SysFreeString(bstr_ptr)
+
+    def get_all_user_ids(self, machine_number):
+        """Returns enrolled user IDs the SDK can see on the device -- separate
+        from attendance log data, useful to confirm the connection can see
+        ANY local data before worrying about why the log specifically is empty."""
+        if not self.dll._ReadAllUserID(machine_number):
+            return []
+        user_ids = []
+        (enroll_no, e_machine, backup_no, privilege, enable) = (ctypes.c_int32() for _ in range(5))
+        while self.dll._GetAllUserID(
+            machine_number, ctypes.byref(enroll_no), ctypes.byref(e_machine),
+            ctypes.byref(backup_no), ctypes.byref(privilege), ctypes.byref(enable),
+        ):
+            user_ids.append(enroll_no.value)
+        return user_ids
+
     def get_general_log(self, machine_number):
         """Reads all attendance ("general") log records off the device.
         Returns a list of dicts: user_id, verify_mode, punch_time."""
-        if not self.dll._ReadAllGLogData(machine_number):
+        read_ok = self.dll._ReadAllGLogData(machine_number)
+        print(f"[debug] _ReadAllGLogData returned: {read_ok}")
+        if not read_ok:
             return []
 
         records = []
+        raw_count = 0
         (t_machine, enroll_no, e_machine, verify_mode,
          year, month, day, hour, minute, second) = (ctypes.c_int32() for _ in range(10))
 
@@ -163,15 +203,29 @@ class SBXPCDevice:
             ctypes.byref(verify_mode), ctypes.byref(year), ctypes.byref(month),
             ctypes.byref(day), ctypes.byref(hour), ctypes.byref(minute), ctypes.byref(second),
         ):
+            raw_count += 1
+            # Print every raw record exactly as it comes off the device,
+            # before any parsing/filtering, so even a record that fails to
+            # parse below still shows up here.
+            print(f"[debug] raw record #{raw_count}: t_machine={t_machine.value} "
+                  f"enroll_no={enroll_no.value} e_machine={e_machine.value} "
+                  f"verify_mode={verify_mode.value} "
+                  f"date={year.value:04d}-{month.value:02d}-{day.value:02d} "
+                  f"time={hour.value:02d}:{minute.value:02d}:{second.value:02d}")
+
             try:
                 ts = datetime(year.value, month.value, day.value, hour.value, minute.value, second.value)
             except ValueError:
+                print("[debug]   -> skipped, invalid date/time in this record")
                 continue  # skip a malformed record instead of aborting the whole sync
             records.append({
                 "user_id": str(enroll_no.value),
                 "verify_mode": verify_mode.value,
                 "punch_time": ts,
             })
+
+        print(f"[debug] total raw records from device: {raw_count}, "
+              f"parsed successfully: {len(records)}")
         return records
 
 
@@ -187,6 +241,12 @@ def sync():
         return
 
     try:
+        serial = device.get_serial_number(MACHINE_NUMBER)
+        print(f"Device serial number (via SDK): {serial or '(none returned)'}")
+
+        user_ids = device.get_all_user_ids(MACHINE_NUMBER)
+        print(f"Enrolled user IDs visible via SDK: {user_ids if user_ids else '(none)'}")
+
         print("Reading attendance log ...")
         records = device.get_general_log(MACHINE_NUMBER)
         print(f"Device returned {len(records)} punch record(s).")
@@ -197,7 +257,19 @@ def sync():
         # the pipeline. Clear it manually later once you trust this script.
 
     if not records:
+        print("[debug] No records to send -- nothing will be written to the DB.")
         return
+
+    # ------------------------------------------------------------------
+    # Debug: show exactly what's about to be sent onward (to the DB /
+    # Flask app) before anything touches the database. This is the
+    # "is the device actually giving me anything real" checkpoint.
+    # ------------------------------------------------------------------
+    print(f"[debug] {len(records)} record(s) about to be processed for insert:")
+    for i, rec in enumerate(records, start=1):
+        print(f"[debug]   #{i}: user_id={rec['user_id']} "
+              f"verify_mode={rec['verify_mode']} "
+              f"punch_time={rec['punch_time'].isoformat()}")
 
     conn = db_connect()
     cursor = conn.cursor()
