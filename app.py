@@ -647,15 +647,10 @@ def attendance():
                                     a.ZKBioTransactionID,
                                     a.EmployeeID,
                                     a.Source AS source,
-                                    COALESCE(d.DeviceName, rt.terminal_alias) AS DeviceName,
-                                    d.Location AS DeviceLocation
+                                    a.CreatedAt
                                 FROM Attendance a
                                 LEFT JOIN Employees e
                                     ON e.EmployeeID = a.EmployeeID
-                                LEFT JOIN RawTransactions rt
-                                    ON rt.id = a.ZKBioTransactionID
-                                LEFT JOIN Device d
-                                    ON d.SerialNumber = rt.terminal_sn
                                 WHERE CAST(a.PunchTime AS DATE) = ?
                             """
         params = [selected_date]
@@ -668,11 +663,6 @@ def attendance():
         cursor.execute(attendance_query, tuple(params))
         attendance_records = fetch_all_dicts(cursor)
 
-        cursor.execute(
-            "SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName FROM employees ORDER BY FirstName"
-        )
-        employees = fetch_all_dicts(cursor)
-
         count_query = "SELECT COUNT(*) FROM Attendance WHERE CAST(PunchTime AS DATE) = ?"
         count_params = [selected_date]
         if selected_employee_id:
@@ -680,33 +670,20 @@ def attendance():
             count_params.append(selected_employee_id)
         cursor.execute(count_query, tuple(count_params))
         total_records = cursor.fetchone()[0] or 0
-        
-        
+
         cursor.execute("""
-                    SELECT
-                        EmployeeID,
-                        CONCAT(FirstName, ' ', LastName) AS FullName
-                    FROM Employees
-                    WHERE Status = 1
-                    ORDER BY FirstName, LastName
-                """)
+            SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName
+            FROM Employees
+            WHERE Status = 1
+            ORDER BY FirstName, LastName
+        """)
+        employees = [{'EmployeeID': row.EmployeeID, 'FullName': row.FullName} for row in cursor.fetchall()]
 
-        rows = cursor.fetchall()
+        cursor.execute("SELECT MAX(CreatedAt) FROM Attendance")
+        sync_row = cursor.fetchone()
+        if sync_row and sync_row[0]:
+            last_sync_time = sync_row[0].strftime('%Y-%m-%d %H:%M:%S')
 
-        employees = []
-
-        for row in rows:
-            employees.append({
-                'EmployeeID': row.EmployeeID,
-                'FullName': row.FullName
-            })
-
-        # cursor.execute("SELECT MAX(sync_time) FROM SyncLog")
-        # sync_row = cursor.fetchone()
-        # if sync_row:
-        #     last_sync = sync_row[0]
-        #     if last_sync:
-        #         last_sync_time = last_sync.strftime('%Y-%m-%d %H:%M:%S')
     except Exception as e:
         print(f"Error fetching attendance records: {e}")
         attendance_records = []
@@ -733,9 +710,9 @@ def attendance():
 def add_attendance():
     employee_id = request.form.get('employee_id')
     punch_time = datetime.strptime(
-    request.form['punch_time'],
-    '%Y-%m-%dT%H:%M'
-)
+        request.form['punch_time'],
+        '%Y-%m-%dT%H:%M'
+    )
 
     if employee_id and punch_time:
         conn = None
@@ -743,8 +720,8 @@ def add_attendance():
             conn = AMS_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO Attendance (EmployeeID, PunchTime) VALUES (?, ?)",
-                (employee_id, punch_time),
+                "INSERT INTO Attendance (EmployeeID, PunchTime, Source) VALUES (?, ?, ?)",
+                (employee_id, punch_time, 'Manual'),
             )
             conn.commit()
         except Exception as e:
@@ -754,7 +731,6 @@ def add_attendance():
                 conn.close()
 
     return redirect(url_for('attendance'))
-
 
 @app.route('/reports')
 def reports():
