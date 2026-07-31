@@ -5,29 +5,35 @@
 
 {% block content %}
 
-<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+<form method="get" class="flex flex-wrap items-center justify-between gap-3 mb-6">
   <div class="flex items-center gap-3">
-    <input type="date" value="{{ selected_date or '2026-06-30' }}" class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-    <select class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-      <option>All Shifts</option>
-      {% for shift in shifts or [{'ShiftName': 'Morning Shift'}, {'ShiftName': 'Evening Shift'}, {'ShiftName': 'Night Shift'}] %}
-      <option>{{ shift.ShiftName }}</option>
+    <input type="date" name="selected_date" value="{{ selected_date }}"
+           onchange="this.form.submit()"
+           class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+    <select name="shift_id" onchange="this.form.submit()"
+            class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+      <option value="">All Shifts</option>
+      {% for shift in shifts %}
+      <option value="{{ shift.ShiftID }}" {% if selected_shift_id|string == shift.ShiftID|string %}selected{% endif %}>
+        {{ shift.ShiftName }}
+      </option>
       {% endfor %}
     </select>
-    <select class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-      <option>All Statuses</option>
-      <option>On Time</option>
-      <option>Late</option>
-      <option>Absent</option>
+    <select name="status" onchange="this.form.submit()"
+            class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+      <option value="">All Statuses</option>
+      <option value="On Time" {% if selected_status == 'On Time' %}selected{% endif %}>On Time</option>
+      <option value="Late" {% if selected_status == 'Late' %}selected{% endif %}>Late</option>
+      <option value="Absent" {% if selected_status == 'Absent' %}selected{% endif %}>Absent</option>
     </select>
   </div>
-  <button class="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg transition">
+  <button type="submit" name="export" value="1" class="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg transition">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
     </svg>
     Export CSV
   </button>
-</div>
+</form>
 
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
   <table class="w-full text-sm">
@@ -45,13 +51,8 @@
       </tr>
     </thead>
     <tbody class="divide-y divide-slate-100">
-      {% for r in report_records or [
-        {'FullName': 'Ahmed Raza', 'AttendanceDate': '2026-06-30', 'ShiftName': 'Morning Shift', 'CheckIn': '09:02 AM', 'CheckOut': '06:05 PM', 'WorkingHours': 8.05, 'LateMinutes': 2, 'OvertimeHours': 0.0, 'Status': 'On Time'},
-        {'FullName': 'Sara Khalid', 'AttendanceDate': '2026-06-30', 'ShiftName': 'Morning Shift', 'CheckIn': '08:58 AM', 'CheckOut': '06:00 PM', 'WorkingHours': 8.03, 'LateMinutes': 0, 'OvertimeHours': 0.0, 'Status': 'On Time'},
-        {'FullName': 'Bilal Hussain', 'AttendanceDate': '2026-06-30', 'ShiftName': 'Evening Shift', 'CheckIn': '02:25 PM', 'CheckOut': '11:01 PM', 'WorkingHours': 8.6, 'LateMinutes': 25, 'OvertimeHours': 0.5, 'Status': 'Late'},
-        {'FullName': 'Fatima Noor', 'AttendanceDate': '2026-06-30', 'ShiftName': 'Night Shift', 'CheckIn': None, 'CheckOut': None, 'WorkingHours': 0.0, 'LateMinutes': 0, 'OvertimeHours': 0.0, 'Status': 'Absent'},
-        {'FullName': 'Hamza Tariq', 'AttendanceDate': '2026-06-30', 'ShiftName': 'Evening Shift', 'CheckIn': '02:03 PM', 'CheckOut': '11:20 PM', 'WorkingHours': 9.28, 'LateMinutes': 3, 'OvertimeHours': 0.8, 'Status': 'On Time'}
-      ] %}
+      {% if report_records %}
+      {% for r in report_records %}
       <tr class="hover:bg-slate-50">
         <td class="px-6 py-3.5 font-medium text-slate-800">{{ r.FullName }}</td>
         <td class="px-6 py-3.5 text-slate-500">{{ r.AttendanceDate }}</td>
@@ -72,11 +73,16 @@
         </td>
       </tr>
       {% endfor %}
+      {% else %}
+      <tr>
+        <td colspan="9" class="px-6 py-6 text-center text-slate-400">No report records found for this date.</td>
+      </tr>
+      {% endif %}
     </tbody>
   </table>
 
   <div class="px-6 py-3 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
-    <span>Showing {{ report_records|length if report_records else 5 }} of {{ total_report_records or 86 }} records</span>
+    <span>Showing {{ report_records|length }} of {{ total_report_records }} records</span>
     <div class="flex gap-1">
       <button class="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">Previous</button>
       <button class="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">Next</button>

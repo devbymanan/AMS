@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-
+ 
 {% block title %}Dashboard - AttendanceMS{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
-{% block header_date %}{{ today_date or "Monday, June 30, 2026" }}{% endblock %}
-
+{% block header_date %}{{ today_date }}{% endblock %}
+ 
 {% block content %}
-
+ 
 <!-- Summary Cards -->
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-
+ 
   <div class="bg-white rounded-xl border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-3">
       <span class="text-sm font-medium text-slate-500">Total Employees</span>
@@ -18,10 +18,10 @@
         </svg>
       </div>
     </div>
-    <p class="text-3xl font-bold text-slate-900">{{ total_employees  }}</p>
+    <p class="text-3xl font-bold text-slate-900">{{ total_employees }}</p>
     <p class="text-xs text-slate-400 mt-1">Across all shifts</p>
   </div>
-
+ 
   <div class="bg-white rounded-xl border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-3">
       <span class="text-sm font-medium text-slate-500">Present Today</span>
@@ -31,10 +31,12 @@
         </svg>
       </div>
     </div>
-    <p class="text-3xl font-bold text-slate-900">{{ present_today or 74 }}</p>
-    <p class="text-xs text-emerald-600 mt-1">86% attendance rate</p>
+    <p class="text-3xl font-bold text-slate-900">{{ present_today }}</p>
+    <p class="text-xs text-emerald-600 mt-1">
+      {% if total_employees %}{{ (present_today / total_employees * 100) | round | int }}% attendance rate{% else %}—{% endif %}
+    </p>
   </div>
-
+ 
   <div class="bg-white rounded-xl border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-3">
       <span class="text-sm font-medium text-slate-500">Late Arrivals</span>
@@ -44,10 +46,10 @@
         </svg>
       </div>
     </div>
-    <p class="text-3xl font-bold text-slate-900">{{ late_today or 9 }}</p>
+    <p class="text-3xl font-bold text-slate-900">{{ late_today }}</p>
     <p class="text-xs text-amber-600 mt-1">Today, past grace period</p>
   </div>
-
+ 
   <div class="bg-white rounded-xl border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-3">
       <span class="text-sm font-medium text-slate-500">On Leave / Absent</span>
@@ -57,14 +59,14 @@
         </svg>
       </div>
     </div>
-    <p class="text-3xl font-bold text-slate-900">{{ absent_today or 12 }}</p>
+    <p class="text-3xl font-bold text-slate-900">{{ absent_today }}</p>
     <p class="text-xs text-rose-600 mt-1">No punch recorded</p>
   </div>
-
+ 
 </div>
-
+ 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
+ 
   <!-- Recent Punches -->
   <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200">
     <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
@@ -80,13 +82,8 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100">
-        {% for punch in recent_punches or [
-          {'name': 'Ahmed Raza', 'time': '09:02 AM', 'type': 'Check In'},
-          {'name': 'Sara Khalid', 'time': '08:58 AM', 'type': 'Check In'},
-          {'name': 'Bilal Hussain', 'time': '06:01 PM', 'type': 'Check Out'},
-          {'name': 'Fatima Noor', 'time': '09:14 AM', 'type': 'Check In'},
-          {'name': 'Hamza Tariq', 'time': '05:55 PM', 'type': 'Check Out'}
-        ] %}
+        {% if recent_punches %}
+        {% for punch in recent_punches %}
         <tr class="hover:bg-slate-50">
           <td class="px-6 py-3 font-medium text-slate-800">{{ punch.name }}</td>
           <td class="px-6 py-3 text-slate-500">{{ punch.time }}</td>
@@ -99,21 +96,23 @@
           </td>
         </tr>
         {% endfor %}
+        {% else %}
+        <tr>
+          <td colspan="3" class="px-6 py-6 text-center text-slate-400">No punches recorded yet.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
-
+ 
   <!-- Shift Breakdown -->
   <div class="bg-white rounded-xl border border-slate-200">
     <div class="px-6 py-4 border-b border-slate-200">
       <h2 class="font-semibold text-slate-900">Shift Breakdown</h2>
     </div>
     <div class="p-6 space-y-5">
-      {% for shift in shift_breakdown or [
-        {'name': 'Morning Shift', 'count': 38, 'total': 86, 'color': 'bg-brand-600'},
-        {'name': 'Evening Shift', 'count': 27, 'total': 86, 'color': 'bg-amber-500'},
-        {'name': 'Night Shift', 'count': 21, 'total': 86, 'color': 'bg-slate-700'}
-      ] %}
+      {% if shift_breakdown %}
+      {% for shift in shift_breakdown %}
       <div>
         <div class="flex justify-between text-sm mb-1.5">
           <span class="font-medium text-slate-700">{{ shift.name }}</span>
@@ -124,9 +123,12 @@
         </div>
       </div>
       {% endfor %}
+      {% else %}
+      <p class="text-sm text-slate-400">No shift data available.</p>
+      {% endif %}
     </div>
   </div>
-
+ 
 </div>
-
+ 
 {% endblock %}

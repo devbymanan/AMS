@@ -1,7 +1,9 @@
-﻿from flask import Flask, abort, render_template, request, redirect, url_for
+﻿from flask import Flask, abort, render_template, request, redirect, url_for, Response
 from datetime import datetime
 import pyodbc
 import os
+import csv
+import io
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
@@ -32,22 +34,104 @@ def AMS_connection():
     return conn
 
 
-
 @app.route('/')
+@app.route('/dashboard')
 def dashboard():
     conn = None
     total_employees = 0
+    present_today = 0
+    late_today = 0
+    absent_today = 0
+    recent_punches = []
+    shift_breakdown = []
+    today_date = datetime.today().strftime('%A, %B %d, %Y')
+    today_iso = datetime.today().strftime('%Y-%m-%d')
+
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM employees")
-        total_employees = cursor.fetchone()[0]
+
+        # Total active employees
+        cursor.execute("SELECT COUNT(*) FROM Employees WHERE Status = 1")
+        total_employees = cursor.fetchone()[0] or 0
+
+        # Present today = distinct employees who punched at least once today
+        cursor.execute("""
+            SELECT COUNT(DISTINCT e.EmployeeID)
+            FROM Attendance a
+            JOIN Employees e ON e.EmployeeCode = a.EmployeeID
+            WHERE a.PunchTime >= ? AND a.PunchTime < DATEADD(day, 1, ?)
+        """, (today_iso, today_iso))
+        present_today = cursor.fetchone()[0] or 0
+
+        # Late today = Report rows for today with Status = 'Late'
+        cursor.execute("""
+            SELECT COUNT(*) FROM Report
+            WHERE AttendanceDate = ? AND Status = 'Late'
+        """, (today_iso,))
+        late_today = cursor.fetchone()[0] or 0
+
+        # Absent today = active employees with no punch today
+        absent_today = max(total_employees - present_today, 0)
+
+        # Recent punches (last 8), labeled Check In / Check Out via Report's stored CheckIn time
+        cursor.execute("""
+            SELECT TOP 8
+                CONCAT(e.FirstName, ' ', e.LastName) AS name,
+                a.PunchTime AS punch_time,
+                CASE WHEN CAST(a.PunchTime AS TIME) = r.CheckIn THEN 'Check In' ELSE 'Check Out' END AS type
+            FROM Attendance a
+            JOIN Employees e ON e.EmployeeCode = a.EmployeeID
+            LEFT JOIN Report r ON r.EmployeeID = e.EmployeeID AND r.AttendanceDate = CAST(a.PunchTime AS DATE)
+            ORDER BY a.PunchTime DESC
+        """)
+        for row in cursor.fetchall():
+            recent_punches.append({
+                'name': row.name,
+                'time': row.punch_time.strftime('%I:%M %p'),
+                'type': row.type
+            })
+
+        # Shift breakdown: active employee count per shift
+        cursor.execute("""
+            SELECT s.ShiftName, COUNT(e.EmployeeID) AS emp_count
+            FROM Shift s
+            LEFT JOIN Employees e ON e.ShiftID = s.ShiftID AND e.Status = 1
+            GROUP BY s.ShiftName
+            ORDER BY s.ShiftName
+        """)
+        shift_rows = cursor.fetchall()
+        colors = ['bg-brand-600', 'bg-amber-500', 'bg-slate-700', 'bg-emerald-600', 'bg-rose-500']
+        shift_breakdown = [
+            {
+                'name': row.ShiftName,
+                'count': row.emp_count,
+                'total': total_employees or 1,  # avoid divide-by-zero in template
+                'color': colors[i % len(colors)]
+            }
+            for i, row in enumerate(shift_rows)
+        ]
+
     except Exception as e:
-        print(f"Error fetching total employees: {e}")
+        print(f"Error loading dashboard: {e}")
+        total_employees = present_today = late_today = absent_today = 0
+        recent_punches = []
+        shift_breakdown = []
     finally:
         if conn:
             conn.close()
-    return render_template('dashboard.html', active_page='dashboard', total_employees=total_employees)
+
+    return render_template(
+        'dashboard.html',
+        active_page='dashboard',
+        today_date=today_date,
+        total_employees=total_employees,
+        present_today=present_today,
+        late_today=late_today,
+        absent_today=absent_today,
+        recent_punches=recent_punches,
+        shift_breakdown=shift_breakdown,
+    )
 
 
 @app.route('/employees')
@@ -624,36 +708,44 @@ def delete_device(device_id):
             conn.close()
     return redirect(url_for('devices'))
 
-
 @app.route('/attendance', methods=['GET', 'POST'])
 def attendance():
     conn = None
     attendance_records = []
     employees = []
     total_records = 0
-    selected_date = request.args.get('selected_date') or datetime.today().strftime('%Y-%m-%d')
-    selected_employee_id = request.args.get('employee_id')
+    selected_date = request.args.get('selected_date')
+    selected_employee_id = request.args.get('employee_id')  # now an EmployeeCode string
     last_sync_time = None
 
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
 
+        if not selected_date:
+            cursor.execute("SELECT CAST(MAX(PunchTime) AS DATE) AS LatestPunchDate FROM Attendance")
+            latest_date_row = cursor.fetchone()
+            selected_date = (
+                latest_date_row[0].strftime('%Y-%m-%d')
+                if latest_date_row and latest_date_row[0]
+                else datetime.today().strftime('%Y-%m-%d')
+            )
+
         attendance_query = """
                                 SELECT
                                     a.AttendanceID,
-                                    CONCAT(e.FirstName, ' ', e.LastName) AS FullName,
+                                    CASE WHEN e.EmployeeID IS NULL THEN 'Unknown Employee'
+                                         ELSE CONCAT(e.FirstName, ' ', e.LastName) END AS FullName,
                                     a.PunchTime,
                                     a.ZKBioTransactionID,
                                     a.EmployeeID,
-                                    a.Source AS source,
-                                    a.CreatedAt
+                                    a.Source AS source
                                 FROM Attendance a
                                 LEFT JOIN Employees e
-                                    ON e.EmployeeID = a.EmployeeID
-                                WHERE CAST(a.PunchTime AS DATE) = ?
+                                    ON e.EmployeeCode = a.EmployeeID
+                                WHERE a.PunchTime >= ? AND a.PunchTime < DATEADD(day, 1, ?)
                             """
-        params = [selected_date]
+        params = [selected_date, selected_date]
 
         if selected_employee_id:
             attendance_query += " AND a.EmployeeID = ?"
@@ -663,8 +755,8 @@ def attendance():
         cursor.execute(attendance_query, tuple(params))
         attendance_records = fetch_all_dicts(cursor)
 
-        count_query = "SELECT COUNT(*) FROM Attendance WHERE CAST(PunchTime AS DATE) = ?"
-        count_params = [selected_date]
+        count_query = "SELECT COUNT(*) FROM Attendance WHERE PunchTime >= ? AND PunchTime < DATEADD(day, 1, ?)"
+        count_params = [selected_date, selected_date]
         if selected_employee_id:
             count_query += " AND EmployeeID = ?"
             count_params.append(selected_employee_id)
@@ -672,14 +764,17 @@ def attendance():
         total_records = cursor.fetchone()[0] or 0
 
         cursor.execute("""
-            SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName
+            SELECT EmployeeID, EmployeeCode, CONCAT(FirstName, ' ', LastName) AS FullName
             FROM Employees
             WHERE Status = 1
             ORDER BY FirstName, LastName
         """)
-        employees = [{'EmployeeID': row.EmployeeID, 'FullName': row.FullName} for row in cursor.fetchall()]
+        employees = [
+            {'EmployeeID': row.EmployeeID, 'EmployeeCode': row.EmployeeCode, 'FullName': row.FullName}
+            for row in cursor.fetchall()
+        ]
 
-        cursor.execute("SELECT MAX(CreatedAt) FROM Attendance")
+        cursor.execute("SELECT MAX(PunchTime) FROM Attendance")
         sync_row = cursor.fetchone()
         if sync_row and sync_row[0]:
             last_sync_time = sync_row[0].strftime('%Y-%m-%d %H:%M:%S')
@@ -704,7 +799,6 @@ def attendance():
         total_records=total_records,
         last_sync_time=last_sync_time,
     )
-
 
 @app.route('/add_attendance', methods=['POST'])
 def add_attendance():
@@ -731,7 +825,6 @@ def add_attendance():
                 conn.close()
 
     return redirect(url_for('attendance'))
-
 @app.route('/reports')
 def reports():
     conn = None
@@ -741,6 +834,7 @@ def reports():
     selected_shift_id = request.args.get('shift_id')
     selected_status = request.args.get('status')
     total_report_records = 0
+    export_csv = request.args.get('export') == '1'
 
     try:
         conn = AMS_connection()
@@ -752,7 +846,7 @@ def reports():
 
         report_query = """
             SELECT
-                COALESCE(e.FullName, CONCAT(e.FirstName, ' ', e.LastName)) AS FullName,
+                CONCAT(e.FirstName, ' ', e.LastName) AS FullName,
                 r.AttendanceDate,
                 s.ShiftName,
                 r.CheckIn,
@@ -762,9 +856,9 @@ def reports():
                 r.OvertimeHours,
                 r.Status
             FROM Report r
-            LEFT JOIN employees e ON e.EmployeeID = r.EmployeeID
+            LEFT JOIN Employees e ON e.EmployeeID = r.EmployeeID
             LEFT JOIN Shift s ON s.ShiftID = r.ShiftID
-            WHERE CAST(r.AttendanceDate AS DATE) = ?
+            WHERE r.AttendanceDate = ?
         """
         params = [selected_date]
 
@@ -780,6 +874,46 @@ def reports():
         cursor.execute(report_query, tuple(params))
         report_records = fetch_all_dicts(cursor)
         total_report_records = len(report_records)
+
+        if export_csv:
+            output = io.StringIO()
+            writer = csv.DictWriter(
+                output,
+                fieldnames=[
+                    'FullName',
+                    'AttendanceDate',
+                    'ShiftName',
+                    'CheckIn',
+                    'CheckOut',
+                    'WorkingHours',
+                    'LateMinutes',
+                    'OvertimeHours',
+                    'Status',
+                ],
+            )
+            writer.writeheader()
+            for row in report_records:
+                writer.writerow({
+                    'FullName': row.get('FullName') or '',
+                    'AttendanceDate': row.get('AttendanceDate') or '',
+                    'ShiftName': row.get('ShiftName') or '',
+                    'CheckIn': row.get('CheckIn') or '',
+                    'CheckOut': row.get('CheckOut') or '',
+                    'WorkingHours': row.get('WorkingHours') or '',
+                    'LateMinutes': row.get('LateMinutes') or '',
+                    'OvertimeHours': row.get('OvertimeHours') or '',
+                    'Status': row.get('Status') or '',
+                })
+            csv_output = output.getvalue()
+            return Response(
+                csv_output,
+                mimetype='text/csv',
+                headers={
+                    'Content-Disposition': f'attachment; filename=attendance_report_{selected_date}.csv'
+                },
+            )
+
+        print(report_records)
     except Exception as e:
         print(f"Error fetching reports: {e}")
         report_records = []

@@ -5,29 +5,34 @@
   
   {% block content %}
   
-  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-    <div class="flex items-center gap-3">
-      <input type="date" value="{{ selected_date or '2026-06-30' }}" class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-      <select class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-        <option>All Employees</option>
-        {% for emp in employees or %}
-        <option>{{ emp.FullName }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="flex items-center gap-3">
-      <span class="text-xs text-slate-400 flex items-center gap-1.5">
-        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-        Last sync: {{ last_sync_time or '2 minutes ago' }}
-      </span>
-      <button onclick="document.getElementById('manualPunchModal').classList.remove('hidden')" class="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
-        Manual Punch
-      </button>
-    </div>
+ <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <form method="get" class="flex items-center gap-3">
+    <input type="date" name="selected_date" value="{{ selected_date }}"
+           onchange="this.form.submit()"
+           class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+    <select name="employee_id" onchange="this.form.submit()"
+            class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+      <option value="">All Employees</option>
+      {% for emp in employees %}
+      <option value="{{ emp.EmployeeID }}" {% if selected_employee_id|string == emp.EmployeeID|string %}selected{% endif %}>
+        {{ emp.FullName }}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+  <div class="flex items-center gap-3">
+    <span class="text-xs text-slate-400 flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+      Last sync: {{ last_sync_time }}
+    </span>
+    <button onclick="document.getElementById('manualPunchModal').classList.remove('hidden')" class="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      Manual Punch
+    </button>
   </div>
+</div>
   
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     <table class="w-full text-sm">
@@ -41,6 +46,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100">
+        {% if attendance_records %}
         {% for record in attendance_records%}
         <tr class="hover:bg-slate-50">
           <td class="px-6 py-3.5 text-slate-500">#{{ record.AttendanceID }}</td>
@@ -56,11 +62,16 @@
           </td>
         </tr>
         {% endfor %}
+        {% else %}
+        <tr>
+          <td colspan="5" class="px-6 py-6 text-center text-slate-400">No attendance records found for this date.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   
     <div class="px-6 py-3 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
-      <span>Showing {{ attendance_records|length if attendance_records else 5 }} of {{ total_records or 248 }} records</span>
+      <span>Showing {{ attendance_records|length if attendance_records else 0 }} of {{ total_records }} records</span>
       <div class="flex gap-1">
         <button class="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">Previous</button>
         <button class="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">Next</button>
