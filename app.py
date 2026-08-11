@@ -800,6 +800,213 @@ def attendance():
         last_sync_time=last_sync_time,
     )
 
+@app.route('/roster', methods=['GET'])
+def roster():
+    conn = None
+    roster_entries = []
+    shifts = []
+    employees = []
+    selected_date = request.args.get('selected_date') or datetime.today().strftime('%Y-%m-%d')
+    selected_shift_id = request.args.get('shift_id')
+
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT ShiftID, ShiftName FROM Shift ORDER BY ShiftName")
+        shifts = fetch_all_dicts(cursor)
+
+        cursor.execute("""
+            SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName
+            FROM Employees WHERE Status = 1 ORDER BY FirstName, LastName
+        """)
+        employees = fetch_all_dicts(cursor)
+
+        roster_query = """
+            SELECT
+                r.RosterID,
+                r.RosterDate,
+                r.TeamName,
+                r.Notes,
+                s.ShiftID,
+                s.ShiftName,
+                s.StartTime,
+                s.EndTime,
+                COUNT(ra.EmployeeID) AS EmployeeCount,
+                STRING_AGG(CONCAT(e.FirstName, ' ', e.LastName), ', ') AS EmployeeNames
+            FROM Roster r
+            JOIN Shift s ON s.ShiftID = r.ShiftID
+            LEFT JOIN RosterAssignment ra ON ra.RosterID = r.RosterID
+            LEFT JOIN Employees e ON e.EmployeeID = ra.EmployeeID
+            WHERE r.RosterDate = ?
+        """
+        params = [selected_date]
+
+        if selected_shift_id:
+            roster_query += " AND r.ShiftID = ?"
+            params.append(selected_shift_id)
+
+        roster_query += """
+            GROUP BY r.RosterID, r.RosterDate, r.TeamName, r.Notes,
+                     s.ShiftID, s.ShiftName, s.StartTime, s.EndTime
+            ORDER BY s.ShiftName, r.TeamName
+        """
+        cursor.execute(roster_query, tuple(params))
+        roster_entries = fetch_all_dicts(cursor)
+
+    except Exception as e:
+        print(f"Error fetching roster: {e}")
+        roster_entries = []
+    finally:
+        if conn:
+            conn.close()
+
+    return render_template(
+        'roster.html',
+        active_page='roster',
+        roster_entries=roster_entries,
+        shifts=shifts,
+        employees=employees,
+        selected_date=selected_date,
+        selected_shift_id=selected_shift_id,
+    )
+
+
+@app.route('/add_roster', methods=['POST'])
+def add_roster():
+    conn = None
+    roster_date = request.form.get('roster_date')
+    shift_id = request.form.get('shift_id')
+    team_name = request.form.get('team_name')
+    notes = request.form.get('notes')
+    employee_ids = request.form.getlist('employee_ids')
+
+    if roster_date and shift_id and employee_ids:
+        try:
+            conn = AMS_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO Roster (RosterDate, ShiftID, TeamName, Notes) "
+                "OUTPUT INSERTED.RosterID VALUES (?, ?, ?, ?)",
+                (roster_date, shift_id, team_name, notes),
+            )
+            roster_id = cursor.fetchone()[0]
+
+            for emp_id in employee_ids:
+                cursor.execute(
+                    "INSERT INTO RosterAssignment (RosterID, EmployeeID) VALUES (?, ?)",
+                    (roster_id, emp_id),
+                )
+            conn.commit()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            print(f"Error adding roster: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    return redirect(url_for('roster', selected_date=roster_date))
+
+
+@app.route('/edit_roster/<int:roster_id>', methods=['GET', 'POST'])
+def edit_roster(roster_id):
+    conn = None
+    roster_entry = {}
+    shifts = []
+    employees = []
+    assigned_ids = []
+
+    if request.method == 'POST':
+        roster_date = request.form.get('roster_date')
+        shift_id = request.form.get('shift_id')
+        team_name = request.form.get('team_name')
+        notes = request.form.get('notes')
+        employee_ids = request.form.getlist('employee_ids')
+
+        try:
+            conn = AMS_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE Roster SET RosterDate = ?, ShiftID = ?, TeamName = ?, Notes = ? "
+                "WHERE RosterID = ?",
+                (roster_date, shift_id, team_name, notes, roster_id),
+            )
+            cursor.execute("DELETE FROM RosterAssignment WHERE RosterID = ?", (roster_id,))
+            for emp_id in employee_ids:
+                cursor.execute(
+                    "INSERT INTO RosterAssignment (RosterID, EmployeeID) VALUES (?, ?)",
+                    (roster_id, emp_id),
+                )
+            conn.commit()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            print(f"Error editing roster: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+        return redirect(url_for('roster', selected_date=roster_date))
+
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Roster WHERE RosterID = ?", (roster_id,))
+        row = cursor.fetchone()
+        if not row:
+            abort(404)
+        columns = [col[0] for col in cursor.description]
+        roster_entry = {key: value for key, value in zip(columns, row)}
+        roster_entry['RosterDate'] = roster_entry['RosterDate'].strftime('%Y-%m-%d')
+
+        cursor.execute("SELECT ShiftID, ShiftName FROM Shift ORDER BY ShiftName")
+        shifts = fetch_all_dicts(cursor)
+
+        cursor.execute("""
+            SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName
+            FROM Employees WHERE Status = 1 ORDER BY FirstName, LastName
+        """)
+        employees = fetch_all_dicts(cursor)
+
+        cursor.execute("SELECT EmployeeID FROM RosterAssignment WHERE RosterID = ?", (roster_id,))
+        assigned_ids = [str(r.EmployeeID) for r in cursor.fetchall()]
+
+    except Exception as e:
+        print(f"Error fetching roster details: {e}")
+        abort(500)
+    finally:
+        if conn:
+            conn.close()
+
+    return render_template(
+        'edit_roster.html',
+        active_page='roster',
+        roster=roster_entry,
+        shifts=shifts,
+        employees=employees,
+        assigned_ids=assigned_ids,
+    )
+
+
+@app.route('/delete_roster/<int:roster_id>', methods=['POST'])
+def delete_roster(roster_id):
+    conn = None
+    try:
+        conn = AMS_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM RosterAssignment WHERE RosterID = ?", (roster_id,))
+        cursor.execute("DELETE FROM Roster WHERE RosterID = ?", (roster_id,))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error deleting roster: {e}")
+    finally:
+        if conn:
+            conn.close()
+    return redirect(url_for('roster'))
+
 @app.route('/add_attendance', methods=['POST'])
 def add_attendance():
     employee_id = request.form.get('employee_id')

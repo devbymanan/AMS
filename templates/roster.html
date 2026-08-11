@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Roster - AttendanceMS{% endblock %}
+{% block page_title %}Roster{% endblock %}
+
+{% block content %}
+
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <form method="get" class="flex items-center gap-3">
+    <input type="date" name="selected_date" value="{{ selected_date }}"
+           onchange="this.form.submit()"
+           class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+    <select name="shift_id" onchange="this.form.submit()"
+            class="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+      <option value="">All Shifts</option>
+      {% for shift in shifts %}
+      <option value="{{ shift.ShiftID }}" {% if selected_shift_id|string == shift.ShiftID|string %}selected{% endif %}>
+        {{ shift.ShiftName }}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+  <button onclick="document.getElementById('addRosterModal').classList.remove('hidden')" class="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+    Add Roster
+  </button>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50">
+      <tr class="text-left text-slate-500 border-b border-slate-200">
+        <th class="px-6 py-3 font-medium">Team</th>
+        <th class="px-6 py-3 font-medium">Shift</th>
+        <th class="px-6 py-3 font-medium">Employees</th>
+        <th class="px-6 py-3 font-medium">Count</th>
+        <th class="px-6 py-3 font-medium text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% if roster_entries %}
+      {% for entry in roster_entries %}
+      <tr class="hover:bg-slate-50">
+        <td class="px-6 py-3.5 font-medium text-slate-800">{{ entry.TeamName or 'Untitled Team' }}</td>
+        <td class="px-6 py-3.5 text-slate-600">
+          {{ entry.ShiftName }}
+          <span class="text-slate-400 text-xs block">{{ entry.StartTime }} &mdash; {{ entry.EndTime }}</span>
+        </td>
+        <td class="px-6 py-3.5 text-slate-600 max-w-xs truncate" title="{{ entry.EmployeeNames or '' }}">
+          {{ entry.EmployeeNames or '—' }}
+        </td>
+        <td class="px-6 py-3.5">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
+            {{ entry.EmployeeCount }}
+          </span>
+        </td>
+        <td class="px-6 py-3.5">
+          <div class="flex justify-end gap-1">
+            <a href="{{ url_for('edit_roster', roster_id=entry.RosterID) }}" title="Edit Roster"
+               class="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </a>
+            <form action="{{ url_for('delete_roster', roster_id=entry.RosterID) }}" method="POST" class="inline"
+                  onsubmit="return confirm('Are you sure you want to delete this roster entry?');">
+              <button type="submit" title="Delete Roster"
+                      class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% else %}
+      <tr>
+        <td colspan="5" class="px-6 py-6 text-center text-slate-400">No roster entries found for this date.</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Roster Modal -->
+<div id="addRosterModal" class="hidden fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl w-full max-w-lg">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <h3 class="font-semibold text-slate-900">Add Roster</h3>
+      <button onclick="document.getElementById('addRosterModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <form method="POST" action="{{ url_for('add_roster') }}" class="px-6 py-4 space-y-4">
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
+          <input type="date" name="roster_date" value="{{ selected_date }}" required
+                 class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Shift</label>
+          <select name="shift_id" required
+                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="" disabled selected>Select shift</option>
+            {% for shift in shifts %}
+            <option value="{{ shift.ShiftID }}">{{ shift.ShiftName }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Team Name (optional)</label>
+        <input type="text" name="team_name" placeholder="e.g. Warehouse Loading Team"
+               class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Employees</label>
+        <div class="border border-slate-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
+          {% for emp in employees %}
+          <label class="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" name="employee_ids" value="{{ emp.EmployeeID }}"
+                   class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            {{ emp.FullName }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
+        <textarea name="notes" rows="2"
+                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button" onclick="document.getElementById('addRosterModal').classList.add('hidden')" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
+        <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition">Save Roster</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
