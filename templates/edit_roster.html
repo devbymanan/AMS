@@ -59,15 +59,13 @@
 
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1">Select by Department</label>
-      <div class="flex flex-wrap gap-2">
+      <select class="dept-select w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" data-modal="edit">
+        <option value="">All Departments</option>
         {% for dept in departments %}
-        <label class="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
-          <input type="checkbox" class="dept-toggle rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                 data-department-id="{{ dept.DepartmentID }}" data-modal="edit">
-          {{ dept.DepartmentName }}
-        </label>
+        <option value="{{ dept.DepartmentID }}">{{ dept.DepartmentName }}</option>
         {% endfor %}
-      </div>
+      </select>
+      <p class="text-xs text-slate-400 mt-1">Filters the list below and checks everyone in that department.</p>
     </div>
 
     <div>
@@ -121,13 +119,12 @@
   function filterEmployees(modal) {
     const searchInput = document.querySelector('.employee-search[data-modal="' + modal + '"]');
     const term = searchInput ? searchInput.value.trim().toLowerCase() : '';
-    const activeDeptIds = Array.from(
-      document.querySelectorAll('.dept-toggle[data-modal="' + modal + '"]:checked')
-    ).map(function (t) { return t.dataset.departmentId; });
+    const deptSelect = document.querySelector('.dept-select[data-modal="' + modal + '"]');
+    const activeDeptId = deptSelect ? deptSelect.value : '';
 
     document.querySelectorAll('.employee-list[data-modal="' + modal + '"] .employee-row').forEach(function (row) {
       const matchesSearch = !term || row.dataset.name.includes(term);
-      const matchesDept = activeDeptIds.length === 0 || activeDeptIds.includes(row.dataset.departmentId);
+      const matchesDept = !activeDeptId || row.dataset.departmentId === activeDeptId;
       row.style.display = (matchesSearch && matchesDept) ? '' : 'none';
     });
   }
@@ -136,15 +133,15 @@
     input.addEventListener('input', function () { filterEmployees(input.dataset.modal); });
   });
 
-  document.querySelectorAll('.dept-toggle').forEach(function (toggle) {
-    toggle.addEventListener('change', function () {
-      const modal = toggle.dataset.modal;
-      const deptId = toggle.dataset.departmentId;
-      document.querySelectorAll(
-        '.employee-list[data-modal="' + modal + '"] .employee-checkbox[data-department-id="' + deptId + '"]'
-      ).forEach(function (cb) {
-        cb.checked = toggle.checked;
-      });
+  document.querySelectorAll('.dept-select').forEach(function (select) {
+    select.addEventListener('change', function () {
+      const modal = select.dataset.modal;
+      const deptId = select.value;
+      if (deptId) {
+        document.querySelectorAll(
+          '.employee-list[data-modal="' + modal + '"] .employee-checkbox[data-department-id="' + deptId + '"]'
+        ).forEach(function (cb) { cb.checked = true; });
+      }
       filterEmployees(modal);
     });
   });
