@@ -10,52 +10,144 @@
     <h3 class="font-semibold text-slate-900">Edit Roster</h3>
   </div>
   <form method="POST" action="{{ url_for('edit_roster', roster_id=roster.RosterID) }}" class="px-6 py-4 space-y-4">
+
     <div class="grid grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
-        <input type="date" name="roster_date" value="{{ roster.RosterDate }}" required
+        <label class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+        <input type="date" id="edit_start_date" name="start_date" value="{{ roster.StartDate }}" required
                class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Shift</label>
-        <select name="shift_id" required
-                class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-          {% for shift in shifts %}
-          <option value="{{ shift.ShiftID }}" {% if shift.ShiftID|string == roster.ShiftID|string %}selected{% endif %}>
-            {{ shift.ShiftName }}
-          </option>
-          {% endfor %}
-        </select>
+        <label class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+        <input type="date" id="edit_end_date" name="end_date" value="{{ roster.EndDate }}" required
+               class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
       </div>
     </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Shift</label>
+      <select name="shift_id" required
+              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+        {% for shift in shifts %}
+        <option value="{{ shift.ShiftID }}" {% if shift.ShiftID|string == roster.ShiftID|string %}selected{% endif %}>
+          {{ shift.ShiftName }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1">Team Name (optional)</label>
       <input type="text" name="team_name" value="{{ roster.TeamName or '' }}" placeholder="e.g. Warehouse Loading Team"
              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
     </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Off Days</label>
+      <div class="flex flex-wrap gap-2">
+        {% for day in weekdays %}
+        <label class="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
+          <input type="checkbox" name="off_days" value="{{ day }}"
+                 {% if day in roster.OffDaysList %}checked{% endif %}
+                 class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+          {{ day }}
+        </label>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-slate-400 mt-1">These weekdays will be marked off within the date range above.</p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Select by Department</label>
+      <div class="flex flex-wrap gap-2">
+        {% for dept in departments %}
+        <label class="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
+          <input type="checkbox" class="dept-toggle rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                 data-department-id="{{ dept.DepartmentID }}" data-modal="edit">
+          {{ dept.DepartmentName }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1">Employees</label>
-      <div class="border border-slate-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
+      <input type="text" class="employee-search w-full px-3 py-2 text-sm border border-slate-200 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+             placeholder="Search employees..." data-modal="edit">
+      <div class="border border-slate-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-slate-100 employee-list" data-modal="edit">
         {% for emp in employees %}
-        <label class="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+        <label class="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer employee-row"
+               data-department-id="{{ emp.DepartmentID }}" data-name="{{ emp.FullName|lower }}">
           <input type="checkbox" name="employee_ids" value="{{ emp.EmployeeID }}"
                  {% if emp.EmployeeID|string in assigned_ids %}checked{% endif %}
-                 class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+                 class="employee-checkbox rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                 data-department-id="{{ emp.DepartmentID }}">
           {{ emp.FullName }}
         </label>
         {% endfor %}
       </div>
     </div>
+
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
       <textarea name="notes" rows="2"
                 class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">{{ roster.Notes or '' }}</textarea>
     </div>
+
     <div class="flex justify-end gap-3 pt-2">
       <a href="{{ url_for('roster') }}" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</a>
       <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition">Save Changes</button>
     </div>
   </form>
 </div>
+
+<script>
+  (function () {
+    const startInput = document.getElementById('edit_start_date');
+    const endInput = document.getElementById('edit_end_date');
+    if (startInput && endInput) {
+      endInput.min = startInput.value;
+      startInput.addEventListener('change', function () {
+        endInput.min = startInput.value;
+        if (endInput.value < startInput.value) {
+          endInput.value = startInput.value;
+        }
+      });
+    }
+  })();
+
+  // Search box + checked departments both narrow the same visible list, combined with AND.
+  // Unchecked departments (none selected) means "show every employee".
+  function filterEmployees(modal) {
+    const searchInput = document.querySelector('.employee-search[data-modal="' + modal + '"]');
+    const term = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const activeDeptIds = Array.from(
+      document.querySelectorAll('.dept-toggle[data-modal="' + modal + '"]:checked')
+    ).map(function (t) { return t.dataset.departmentId; });
+
+    document.querySelectorAll('.employee-list[data-modal="' + modal + '"] .employee-row').forEach(function (row) {
+      const matchesSearch = !term || row.dataset.name.includes(term);
+      const matchesDept = activeDeptIds.length === 0 || activeDeptIds.includes(row.dataset.departmentId);
+      row.style.display = (matchesSearch && matchesDept) ? '' : 'none';
+    });
+  }
+
+  document.querySelectorAll('.employee-search').forEach(function (input) {
+    input.addEventListener('input', function () { filterEmployees(input.dataset.modal); });
+  });
+
+  document.querySelectorAll('.dept-toggle').forEach(function (toggle) {
+    toggle.addEventListener('change', function () {
+      const modal = toggle.dataset.modal;
+      const deptId = toggle.dataset.departmentId;
+      document.querySelectorAll(
+        '.employee-list[data-modal="' + modal + '"] .employee-checkbox[data-department-id="' + deptId + '"]'
+      ).forEach(function (cb) {
+        cb.checked = toggle.checked;
+      });
+      filterEmployees(modal);
+    });
+  });
+</script>
 
 {% endblock %}

@@ -800,32 +800,75 @@ def attendance():
         last_sync_time=last_sync_time,
     )
 
+
+
+WEEKDAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+ 
+ 
+def is_off_day(date_str, off_days_str):
+    """Return True if date_str (YYYY-MM-DD) falls on a weekday listed in off_days_str."""
+    if not off_days_str:
+        return False
+    off_days = {d.strip() for d in off_days_str.split(',') if d.strip()}
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+    return date_obj.strftime('%a') in off_days
+ 
+ 
+def fetch_departments(conn, cursor, employees):
+    """Fetch departments for the picker. Isolated from the caller's try block so that
+    a missing/renamed Departments table can't take down the rest of the page (e.g. the
+    employee list) — falls back to grouping by raw DepartmentID if the table isn't there."""
+    try:
+        cursor.execute("SELECT DepartmentID, DepartmentName FROM Department WHERE IsActive = 1 ORDER BY DepartmentName")
+        return fetch_all_dicts(cursor)
+    except Exception as e:
+        print(f"Departments table unavailable, falling back to raw DepartmentID grouping: {e}")
+        try:
+            conn.rollback()  # clear the aborted transaction state so later queries on this conn still work
+        except Exception:
+            pass
+        seen = set()
+        fallback = []
+        for emp in employees:
+            dep_id = emp.get('DepartmentID')
+            if dep_id is not None and dep_id not in seen:
+                seen.add(dep_id)
+                fallback.append({'DepartmentID': dep_id, 'DepartmentName': f'Department {dep_id}'})
+        fallback.sort(key=lambda d: d['DepartmentName'])
+        return fallback
+ 
+ 
 @app.route('/roster', methods=['GET'])
 def roster():
     conn = None
     roster_entries = []
     shifts = []
     employees = []
+    departments = []
     selected_date = request.args.get('selected_date') or datetime.today().strftime('%Y-%m-%d')
     selected_shift_id = request.args.get('shift_id')
-
+ 
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
-
+ 
         cursor.execute("SELECT ShiftID, ShiftName FROM Shift ORDER BY ShiftName")
         shifts = fetch_all_dicts(cursor)
-
+ 
         cursor.execute("""
-            SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName
+            SELECT EmployeeID, DepartmentID, CONCAT(FirstName, ' ', LastName) AS FullName
             FROM Employees WHERE Status = 1 ORDER BY FirstName, LastName
         """)
         employees = fetch_all_dicts(cursor)
-
+ 
+        departments = fetch_departments(conn, cursor, employees)
+ 
         roster_query = """
             SELECT
                 r.RosterID,
-                r.RosterDate,
+                r.StartDate,
+                r.EndDate,
+                r.OffDays,
                 r.TeamName,
                 r.Notes,
                 s.ShiftID,
@@ -838,60 +881,69 @@ def roster():
             JOIN Shift s ON s.ShiftID = r.ShiftID
             LEFT JOIN RosterAssignment ra ON ra.RosterID = r.RosterID
             LEFT JOIN Employees e ON e.EmployeeID = ra.EmployeeID
-            WHERE r.RosterDate = ?
+            WHERE r.StartDate <= ? AND r.EndDate >= ?
         """
-        params = [selected_date]
-
+        params = [selected_date, selected_date]
+ 
         if selected_shift_id:
             roster_query += " AND r.ShiftID = ?"
             params.append(selected_shift_id)
-
+ 
         roster_query += """
-            GROUP BY r.RosterID, r.RosterDate, r.TeamName, r.Notes,
+            GROUP BY r.RosterID, r.StartDate, r.EndDate, r.OffDays, r.TeamName, r.Notes,
                      s.ShiftID, s.ShiftName, s.StartTime, s.EndTime
             ORDER BY s.ShiftName, r.TeamName
         """
         cursor.execute(roster_query, tuple(params))
         roster_entries = fetch_all_dicts(cursor)
-
+ 
+        for entry in roster_entries:
+            entry['IsOffToday'] = is_off_day(selected_date, entry.get('OffDays'))
+ 
     except Exception as e:
         print(f"Error fetching roster: {e}")
         roster_entries = []
     finally:
         if conn:
             conn.close()
-
+ 
     return render_template(
         'roster.html',
         active_page='roster',
         roster_entries=roster_entries,
         shifts=shifts,
         employees=employees,
+        departments=departments,
         selected_date=selected_date,
         selected_shift_id=selected_shift_id,
+        weekdays=WEEKDAY_ABBR,
     )
-
-
+ 
+ 
 @app.route('/add_roster', methods=['POST'])
 def add_roster():
     conn = None
-    roster_date = request.form.get('roster_date')
+    start_date = request.form.get('start_date')
+    end_date = request.form.get('end_date') or start_date
     shift_id = request.form.get('shift_id')
     team_name = request.form.get('team_name')
     notes = request.form.get('notes')
+    off_days = request.form.getlist('off_days')  # e.g. ['Sat', 'Sun']
     employee_ids = request.form.getlist('employee_ids')
-
-    if roster_date and shift_id and employee_ids:
+ 
+    off_days_str = ','.join(off_days) if off_days else None
+ 
+    if start_date and end_date and shift_id and employee_ids and end_date >= start_date:
         try:
             conn = AMS_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO Roster (RosterDate, ShiftID, TeamName, Notes) "
-                "OUTPUT INSERTED.RosterID VALUES (?, ?, ?, ?)",
-                (roster_date, shift_id, team_name, notes),
+                "INSERT INTO Roster (StartDate, EndDate, OffDays, ShiftID, TeamName, Notes) "
+                "OUTPUT INSERTED.RosterID VALUES (?, ?, ?, ?, ?, ?)",
+                (start_date, end_date, off_days_str, shift_id, team_name, notes),
             )
             roster_id = cursor.fetchone()[0]
-
+ 
             for emp_id in employee_ids:
                 cursor.execute(
                     "INSERT INTO RosterAssignment (RosterID, EmployeeID) VALUES (?, ?)",
@@ -905,32 +957,36 @@ def add_roster():
         finally:
             if conn:
                 conn.close()
-
-    return redirect(url_for('roster', selected_date=roster_date))
-
-
+ 
+    return redirect(url_for('roster', selected_date=start_date))
+ 
+ 
 @app.route('/edit_roster/<int:roster_id>', methods=['GET', 'POST'])
 def edit_roster(roster_id):
     conn = None
     roster_entry = {}
     shifts = []
     employees = []
+    departments = []
     assigned_ids = []
-
+ 
     if request.method == 'POST':
-        roster_date = request.form.get('roster_date')
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date') or start_date
         shift_id = request.form.get('shift_id')
         team_name = request.form.get('team_name')
         notes = request.form.get('notes')
+        off_days = request.form.getlist('off_days')
         employee_ids = request.form.getlist('employee_ids')
-
+        off_days_str = ','.join(off_days) if off_days else None
+ 
         try:
             conn = AMS_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE Roster SET RosterDate = ?, ShiftID = ?, TeamName = ?, Notes = ? "
+                "UPDATE Roster SET StartDate = ?, EndDate = ?, OffDays = ?, ShiftID = ?, TeamName = ?, Notes = ? "
                 "WHERE RosterID = ?",
-                (roster_date, shift_id, team_name, notes, roster_id),
+                (start_date, end_date, off_days_str, shift_id, team_name, notes, roster_id),
             )
             cursor.execute("DELETE FROM RosterAssignment WHERE RosterID = ?", (roster_id,))
             for emp_id in employee_ids:
@@ -946,9 +1002,9 @@ def edit_roster(roster_id):
         finally:
             if conn:
                 conn.close()
-
-        return redirect(url_for('roster', selected_date=roster_date))
-
+ 
+        return redirect(url_for('roster', selected_date=start_date))
+ 
     try:
         conn = AMS_connection()
         cursor = conn.cursor()
@@ -958,37 +1014,43 @@ def edit_roster(roster_id):
             abort(404)
         columns = [col[0] for col in cursor.description]
         roster_entry = {key: value for key, value in zip(columns, row)}
-        roster_entry['RosterDate'] = roster_entry['RosterDate'].strftime('%Y-%m-%d')
-
+        roster_entry['StartDate'] = roster_entry['StartDate'].strftime('%Y-%m-%d')
+        roster_entry['EndDate'] = roster_entry['EndDate'].strftime('%Y-%m-%d')
+        roster_entry['OffDaysList'] = (roster_entry.get('OffDays') or '').split(',') if roster_entry.get('OffDays') else []
+ 
         cursor.execute("SELECT ShiftID, ShiftName FROM Shift ORDER BY ShiftName")
         shifts = fetch_all_dicts(cursor)
-
+ 
         cursor.execute("""
-            SELECT EmployeeID, CONCAT(FirstName, ' ', LastName) AS FullName
+            SELECT EmployeeID, DepartmentID, CONCAT(FirstName, ' ', LastName) AS FullName
             FROM Employees WHERE Status = 1 ORDER BY FirstName, LastName
         """)
         employees = fetch_all_dicts(cursor)
-
+ 
+        departments = fetch_departments(conn, cursor, employees)
+ 
         cursor.execute("SELECT EmployeeID FROM RosterAssignment WHERE RosterID = ?", (roster_id,))
         assigned_ids = [str(r.EmployeeID) for r in cursor.fetchall()]
-
+ 
     except Exception as e:
         print(f"Error fetching roster details: {e}")
         abort(500)
     finally:
         if conn:
             conn.close()
-
+ 
     return render_template(
         'edit_roster.html',
         active_page='roster',
         roster=roster_entry,
         shifts=shifts,
         employees=employees,
+        departments=departments,
         assigned_ids=assigned_ids,
+        weekdays=WEEKDAY_ABBR,
     )
-
-
+ 
+ 
 @app.route('/delete_roster/<int:roster_id>', methods=['POST'])
 def delete_roster(roster_id):
     conn = None
@@ -1006,7 +1068,7 @@ def delete_roster(roster_id):
         if conn:
             conn.close()
     return redirect(url_for('roster'))
-
+ 
 @app.route('/add_attendance', methods=['POST'])
 def add_attendance():
     employee_id = request.form.get('employee_id')

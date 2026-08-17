@@ -34,6 +34,7 @@
       <tr class="text-left text-slate-500 border-b border-slate-200">
         <th class="px-6 py-3 font-medium">Team</th>
         <th class="px-6 py-3 font-medium">Shift</th>
+        <th class="px-6 py-3 font-medium">Date Range</th>
         <th class="px-6 py-3 font-medium">Employees</th>
         <th class="px-6 py-3 font-medium">Count</th>
         <th class="px-6 py-3 font-medium text-right">Actions</th>
@@ -43,10 +44,21 @@
       {% if roster_entries %}
       {% for entry in roster_entries %}
       <tr class="hover:bg-slate-50">
-        <td class="px-6 py-3.5 font-medium text-slate-800">{{ entry.TeamName or 'Untitled Team' }}</td>
+        <td class="px-6 py-3.5 font-medium text-slate-800">
+          {{ entry.TeamName or 'Untitled Team' }}
+          {% if entry.IsOffToday %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 ml-1">Off today</span>
+          {% endif %}
+        </td>
         <td class="px-6 py-3.5 text-slate-600">
           {{ entry.ShiftName }}
           <span class="text-slate-400 text-xs block">{{ entry.StartTime }} &mdash; {{ entry.EndTime }}</span>
+        </td>
+        <td class="px-6 py-3.5 text-slate-600">
+          {{ entry.StartDate }} &rarr; {{ entry.EndDate }}
+          {% if entry.OffDays %}
+          <span class="text-slate-400 text-xs block">Off: {{ entry.OffDays }}</span>
+          {% endif %}
         </td>
         <td class="px-6 py-3.5 text-slate-600 max-w-xs truncate" title="{{ entry.EmployeeNames or '' }}">
           {{ entry.EmployeeNames or '—' }}
@@ -79,7 +91,7 @@
       {% endfor %}
       {% else %}
       <tr>
-        <td colspan="5" class="px-6 py-6 text-center text-slate-400">No roster entries found for this date.</td>
+        <td colspan="6" class="px-6 py-6 text-center text-slate-400">No roster entries found for this date.</td>
       </tr>
       {% endif %}
     </tbody>
@@ -88,8 +100,8 @@
 
 <!-- Add Roster Modal -->
 <div id="addRosterModal" class="hidden fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-  <div class="bg-white rounded-xl w-full max-w-lg">
-    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+  <div class="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white">
       <h3 class="font-semibold text-slate-900">Add Roster</h3>
       <button onclick="document.getElementById('addRosterModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,45 +110,88 @@
       </button>
     </div>
     <form method="POST" action="{{ url_for('add_roster') }}" class="px-6 py-4 space-y-4">
+
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
-          <input type="date" name="roster_date" value="{{ selected_date }}" required
+          <label class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+          <input type="date" id="add_start_date" name="start_date" value="{{ selected_date }}" required
                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Shift</label>
-          <select name="shift_id" required
-                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
-            <option value="" disabled selected>Select shift</option>
-            {% for shift in shifts %}
-            <option value="{{ shift.ShiftID }}">{{ shift.ShiftName }}</option>
-            {% endfor %}
-          </select>
+          <label class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+          <input type="date" id="add_end_date" name="end_date" value="{{ selected_date }}" required
+                 class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
         </div>
       </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Shift</label>
+        <select name="shift_id" required
+                class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="" disabled selected>Select shift</option>
+          {% for shift in shifts %}
+          <option value="{{ shift.ShiftID }}">{{ shift.ShiftName }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Team Name (optional)</label>
         <input type="text" name="team_name" placeholder="e.g. Warehouse Loading Team"
                class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
       </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Off Days</label>
+        <div class="flex flex-wrap gap-2">
+          {% for day in weekdays %}
+          <label class="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
+            <input type="checkbox" name="off_days" value="{{ day }}"
+                   {% if day in ['Sat', 'Sun'] %}checked{% endif %}
+                   class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            {{ day }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="text-xs text-slate-400 mt-1">These weekdays will be marked off within the date range above.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Select by Department</label>
+        <div class="flex flex-wrap gap-2">
+          {% for dept in departments %}
+          <label class="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
+            <input type="checkbox" class="dept-toggle rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                   data-department-id="{{ dept.DepartmentID }}" data-modal="add">
+            {{ dept.DepartmentName }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Employees</label>
-        <div class="border border-slate-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
+        <input type="text" class="employee-search w-full px-3 py-2 text-sm border border-slate-200 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+               placeholder="Search employees..." data-modal="add">
+        <div class="border border-slate-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-slate-100 employee-list" data-modal="add">
           {% for emp in employees %}
-          <label class="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+          <label class="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer employee-row"
+                 data-department-id="{{ emp.DepartmentID }}" data-name="{{ emp.FullName|lower }}">
             <input type="checkbox" name="employee_ids" value="{{ emp.EmployeeID }}"
-                   class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+                   class="employee-checkbox rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                   data-department-id="{{ emp.DepartmentID }}">
             {{ emp.FullName }}
           </label>
           {% endfor %}
         </div>
       </div>
+
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
         <textarea name="notes" rows="2"
                   class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
       </div>
+
       <div class="flex justify-end gap-3 pt-2">
         <button type="button" onclick="document.getElementById('addRosterModal').classList.add('hidden')" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
         <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition">Save Roster</button>
@@ -144,5 +199,56 @@
     </form>
   </div>
 </div>
+
+<script>
+  // Keep End Date >= Start Date
+  (function () {
+    const startInput = document.getElementById('add_start_date');
+    const endInput = document.getElementById('add_end_date');
+    if (startInput && endInput) {
+      startInput.addEventListener('change', function () {
+        endInput.min = startInput.value;
+        if (endInput.value < startInput.value) {
+          endInput.value = startInput.value;
+        }
+      });
+    }
+  })();
+
+  // Search box + checked departments both narrow the same visible list, combined with AND.
+  // Unchecked departments (none selected) means "show every employee".
+  function filterEmployees(modal) {
+    const searchInput = document.querySelector('.employee-search[data-modal="' + modal + '"]');
+    const term = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const activeDeptIds = Array.from(
+      document.querySelectorAll('.dept-toggle[data-modal="' + modal + '"]:checked')
+    ).map(function (t) { return t.dataset.departmentId; });
+
+    document.querySelectorAll('.employee-list[data-modal="' + modal + '"] .employee-row').forEach(function (row) {
+      const matchesSearch = !term || row.dataset.name.includes(term);
+      const matchesDept = activeDeptIds.length === 0 || activeDeptIds.includes(row.dataset.departmentId);
+      row.style.display = (matchesSearch && matchesDept) ? '' : 'none';
+    });
+  }
+
+  document.querySelectorAll('.employee-search').forEach(function (input) {
+    input.addEventListener('input', function () { filterEmployees(input.dataset.modal); });
+  });
+
+  // Department toggle: auto-checks/unchecks every employee in that department AND
+  // narrows the visible list to the checked department(s).
+  document.querySelectorAll('.dept-toggle').forEach(function (toggle) {
+    toggle.addEventListener('change', function () {
+      const modal = toggle.dataset.modal;
+      const deptId = toggle.dataset.departmentId;
+      document.querySelectorAll(
+        '.employee-list[data-modal="' + modal + '"] .employee-checkbox[data-department-id="' + deptId + '"]'
+      ).forEach(function (cb) {
+        cb.checked = toggle.checked;
+      });
+      filterEmployees(modal);
+    });
+  });
+</script>
 
 {% endblock %}
