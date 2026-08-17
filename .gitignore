@@ -3,3 +3,5 @@ SBXPCDLL64.dll
 GEN_FONT64.dll
 .gitignore
 .gitignore
+.env
+__pycache__/app.cpython-314.pyc
